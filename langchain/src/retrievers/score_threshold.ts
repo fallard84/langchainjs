@@ -11,13 +11,16 @@ export type ScoreThresholdRetrieverInput<V extends VectorStore> = Omit<
 > & {
   maxK?: number;
   kIncrement?: number;
-  minSimilarityScore: number;
+  minSimilarityScore?: number;
+  maxDistanceScore?: number;
 };
 
 export class ScoreThresholdRetriever<
   V extends VectorStore
 > extends VectorStoreRetriever<V> {
   minSimilarityScore: number;
+
+  maxDistanceScore: number;
 
   kIncrement = 10;
 
@@ -28,6 +31,14 @@ export class ScoreThresholdRetriever<
     this.maxK = input.maxK ?? this.maxK;
     this.minSimilarityScore =
       input.minSimilarityScore ?? this.minSimilarityScore;
+    this.maxDistanceScore = input.maxDistanceScore ?? this.maxDistanceScore;
+
+    if (!this.minSimilarityScore && !this.maxDistanceScore) {
+      throw new Error(
+        "At least minSimilarityScore or maxDistanceScore must be provided"
+      );
+    }
+
     this.kIncrement = input.kIncrement ?? this.kIncrement;
   }
 
@@ -41,9 +52,14 @@ export class ScoreThresholdRetriever<
         currentK,
         this.filter
       );
-      filteredResults = results.filter(
-        ([, score]) => score >= this.minSimilarityScore
-      );
+      filteredResults = results.filter(([, score]) => {
+        if (this.minSimilarityScore !== undefined) {
+          return score >= this.minSimilarityScore;
+        } else if (this.maxDistanceScore !== undefined) {
+          return score <= this.maxDistanceScore;
+        }
+        return false;
+      });
     } while (filteredResults.length >= currentK && currentK < this.maxK);
     return filteredResults.map((documents) => documents[0]).slice(0, this.maxK);
   }
@@ -53,5 +69,11 @@ export class ScoreThresholdRetriever<
     options: Omit<ScoreThresholdRetrieverInput<V>, "vectorStore">
   ) {
     return new this<V>({ ...options, vectorStore });
+  }
+  static test<V extends VectorStore>(vectorStore: V) {
+    return new this<V>({
+      vectorStore: vectorStore,
+      minSimilarityScore: 0.5,
+    });
   }
 }
